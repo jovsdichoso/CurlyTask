@@ -1,7 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, TouchableOpacity, ScrollView, Animated, Alert, RefreshControl } from 'react-native';
+import {
+    View,
+    TouchableOpacity,
+    ScrollView,
+    Animated,
+    Alert,
+    RefreshControl,
+    Linking
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, getDocs, updateDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    updateDoc,
+    deleteDoc,
+    doc,
+    orderBy
+} from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import CustomText from '../components/CustomText';
 import tw from 'twrnc';
@@ -21,7 +38,6 @@ export default function TasksListScreen({ navigation }) {
             useNativeDriver: true,
         }).start();
 
-        // Add navigation focus listener to refresh tasks
         const unsubscribe = navigation.addListener('focus', () => {
             fetchTasks();
         });
@@ -29,17 +45,16 @@ export default function TasksListScreen({ navigation }) {
         return unsubscribe;
     }, [navigation]);
 
+    // Fetch tasks from Firestore
     const fetchTasks = async () => {
         try {
             const user = auth.currentUser;
-
             if (!user) {
                 Alert.alert('Error', 'You must be logged in to view tasks');
                 setLoading(false);
                 return;
             }
 
-            // Fetch all tasks for current user (both completed and incomplete)
             const tasksQuery = query(
                 collection(db, 'tasks'),
                 where('userId', '==', user.uid),
@@ -49,11 +64,8 @@ export default function TasksListScreen({ navigation }) {
             const querySnapshot = await getDocs(tasksQuery);
             const fetchedTasks = [];
 
-            querySnapshot.forEach((doc) => {
-                fetchedTasks.push({
-                    id: doc.id,
-                    ...doc.data()
-                });
+            querySnapshot.forEach((docSnap) => {
+                fetchedTasks.push({ id: docSnap.id, ...docSnap.data() });
             });
 
             setTasks(fetchedTasks);
@@ -72,28 +84,27 @@ export default function TasksListScreen({ navigation }) {
         fetchTasks();
     };
 
+    // Toggle task completion
     const toggleTask = async (id) => {
         try {
             const task = tasks.find(t => t.id === id);
             const taskRef = doc(db, 'tasks', id);
 
-            // Update in Firebase
             await updateDoc(taskRef, {
                 completed: !task.completed,
                 completedAt: !task.completed ? new Date() : null
             });
 
-            // Update local state immediately for smooth UX
             setTasks(tasks.map(t =>
                 t.id === id ? { ...t, completed: !t.completed } : t
             ));
-
         } catch (error) {
             console.error('Error toggling task:', error);
             Alert.alert('Error', 'Failed to update task. Please try again.');
         }
     };
 
+    // Delete task
     const deleteTask = (id) => {
         Alert.alert(
             'Delete Task',
@@ -105,12 +116,8 @@ export default function TasksListScreen({ navigation }) {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            // Delete from Firebase
                             await deleteDoc(doc(db, 'tasks', id));
-
-                            // Update local state
                             setTasks(tasks.filter(task => task.id !== id));
-
                         } catch (error) {
                             console.error('Error deleting task:', error);
                             Alert.alert('Error', 'Failed to delete task. Please try again.');
@@ -121,8 +128,8 @@ export default function TasksListScreen({ navigation }) {
         );
     };
 
+    // Edit task (placeholder)
     const editTask = (task) => {
-        // Navigate to edit screen (you can create this later)
         Alert.alert('Edit Task', 'Edit functionality coming soon!');
         // navigation.navigate('EditTask', { taskId: task.id, task });
     };
@@ -143,6 +150,28 @@ export default function TasksListScreen({ navigation }) {
     const completedCount = tasks.filter(t => t.completed).length;
     const pendingCount = tasks.filter(t => !t.completed).length;
 
+    // Open PDF properly
+    const openPDF = async (url) => {
+        try {
+            if (!url?.startsWith('https://res.cloudinary.com/')) {
+                Alert.alert('Invalid PDF URL');
+                return;
+            }
+
+            const supported = await Linking.canOpenURL(url);
+            if (!supported) {
+                Alert.alert('Cannot open PDF');
+                return;
+            }
+
+            await Linking.openURL(url);
+        } catch (error) {
+            console.error('Open PDF error:', error);
+            Alert.alert('Error', 'Failed to open PDF.');
+        }
+    };
+
+
     if (loading) {
         return (
             <View style={tw`flex-1 bg-white items-center justify-center`}>
@@ -153,7 +182,7 @@ export default function TasksListScreen({ navigation }) {
 
     return (
         <View style={tw`flex-1 bg-white`}>
-            {/* Decorative Pattern Background */}
+            {/* Decorative Background */}
             <View style={tw`absolute top-0 left-0 right-0 h-72 bg-purple-600 rounded-b-[50px] overflow-hidden`}>
                 <View style={tw`absolute -top-20 -left-20 w-60 h-60 bg-purple-500 rounded-full opacity-20`} />
                 <View style={tw`absolute top-40 -right-10 w-40 h-40 bg-purple-400 rounded-full opacity-20`} />
@@ -172,7 +201,7 @@ export default function TasksListScreen({ navigation }) {
                     </TouchableOpacity>
                 </View>
 
-                {/* Stats Card */}
+                {/* Stats */}
                 <View style={tw`bg-white/10 backdrop-blur rounded-3xl p-4 flex-row justify-around`}>
                     <View style={tw`items-center`}>
                         <CustomText style={tw`text-white text-2xl font-bold`}>{tasks.length}</CustomText>
@@ -195,11 +224,9 @@ export default function TasksListScreen({ navigation }) {
                     <TouchableOpacity
                         key={f}
                         onPress={() => setFilter(f)}
-                        style={tw`px-4 py-2 rounded-full ${filter === f ? 'bg-purple-600' : 'bg-gray-100'
-                            }`}
+                        style={tw`px-4 py-2 rounded-full ${filter === f ? 'bg-purple-600' : 'bg-gray-100'}`}
                     >
-                        <CustomText style={tw`text-sm font-semibold ${filter === f ? 'text-white' : 'text-gray-600'
-                            }`}>
+                        <CustomText style={tw`text-sm font-semibold ${filter === f ? 'text-white' : 'text-gray-600'}`}>
                             {f.charAt(0).toUpperCase() + f.slice(1)}
                         </CustomText>
                     </TouchableOpacity>
@@ -230,7 +257,7 @@ export default function TasksListScreen({ navigation }) {
                         </TouchableOpacity>
                     </View>
                 ) : (
-                    filteredTasks.map((task, index) => (
+                    filteredTasks.map((task) => (
                         <Animated.View
                             key={task.id}
                             style={[
@@ -241,8 +268,7 @@ export default function TasksListScreen({ navigation }) {
                             <View style={tw`flex-row items-center`}>
                                 <TouchableOpacity
                                     onPress={() => toggleTask(task.id)}
-                                    style={tw`w-10 h-10 rounded-full border-2 ${task.completed ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
-                                        } items-center justify-center mr-3`}
+                                    style={tw`w-10 h-10 rounded-full border-2 ${task.completed ? 'bg-purple-600 border-purple-600' : 'border-gray-300'} items-center justify-center mr-3`}
                                 >
                                     {task.completed && <Ionicons name="checkmark" size={20} color="white" />}
                                 </TouchableOpacity>
@@ -250,8 +276,7 @@ export default function TasksListScreen({ navigation }) {
                                 <View style={tw`flex-1`}>
                                     <View style={tw`flex-row items-center mb-1`}>
                                         <CustomText style={tw`text-2xl mr-2`}>{task.emoji || '📝'}</CustomText>
-                                        <CustomText style={tw`text-base font-semibold ${task.completed ? 'text-gray-400 line-through' : 'text-gray-800'
-                                            } flex-1`}>
+                                        <CustomText style={tw`text-base font-semibold ${task.completed ? 'text-gray-400 line-through' : 'text-gray-800'} flex-1`}>
                                             {task.title}
                                         </CustomText>
                                     </View>
@@ -276,10 +301,30 @@ export default function TasksListScreen({ navigation }) {
                                 </View>
                             </View>
 
-                            {/* Show description if exists */}
+                            {/* Description */}
                             {task.description && (
                                 <View style={tw`mt-3 ml-13 bg-gray-50 rounded-2xl p-3`}>
                                     <CustomText style={tw`text-sm text-gray-600`}>{task.description}</CustomText>
+                                </View>
+                            )}
+
+                            {/* PDF Attachment */}
+                            {task.hasAttachment && task.pdfUrl && (
+                                <View style={tw`mt-3 ml-13 bg-indigo-50 rounded-2xl p-3`}>
+                                    <View style={tw`flex-row items-center justify-between`}>
+                                        <View style={tw`flex-row items-center flex-1`}>
+                                            <Ionicons name="document-text-outline" size={18} color="#4F46E5" />
+                                            <CustomText numberOfLines={1} style={tw`ml-2 text-sm text-indigo-700 flex-1`}>
+                                                {task.pdfName || 'Attached PDF'}
+                                            </CustomText>
+                                        </View>
+                                        <TouchableOpacity
+                                            onPress={() => openPDF(task.pdfUrl)}
+                                            style={tw`bg-indigo-600 px-3 py-1.5 rounded-full`}
+                                        >
+                                            <CustomText style={tw`text-white text-xs font-semibold`}>View</CustomText>
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
                             )}
                         </Animated.View>
