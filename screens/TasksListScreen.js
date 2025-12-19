@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, getDocs, updateDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import CustomText from '../components/CustomText';
+import ViewTaskModal from '../components/modals/ViewTaskModal';
 import tw from 'twrnc';
 
 export default function TasksListScreen({ navigation }) {
@@ -11,6 +12,8 @@ export default function TasksListScreen({ navigation }) {
     const [filter, setFilter] = useState('all'); // all, high, medium, low
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [selectedTask, setSelectedTask] = useState(null);
+    const [modalVisible, setModalVisible] = useState(false);
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -87,6 +90,11 @@ export default function TasksListScreen({ navigation }) {
             setTasks(tasks.map(t =>
                 t.id === id ? { ...t, completed: !t.completed } : t
             ));
+            
+            // Update selected task if it's the one being toggled
+            if (selectedTask?.id === id) {
+                setSelectedTask(prev => ({ ...prev, completed: !prev.completed }));
+            }
 
         } catch (error) {
             console.error('Error toggling task:', error);
@@ -110,6 +118,12 @@ export default function TasksListScreen({ navigation }) {
 
                             // Update local state
                             setTasks(tasks.filter(task => task.id !== id));
+                            
+                            // Close modal if the deleted task is currently selected
+                            if (selectedTask?.id === id) {
+                                setModalVisible(false);
+                                setSelectedTask(null);
+                            }
 
                         } catch (error) {
                             console.error('Error deleting task:', error);
@@ -122,9 +136,19 @@ export default function TasksListScreen({ navigation }) {
     };
 
     const editTask = (task) => {
-        // Navigate to edit screen (you can create this later)
-        Alert.alert('Edit Task', 'Edit functionality coming soon!');
-        // navigation.navigate('EditTask', { taskId: task.id, task });
+        // Navigate to edit screen
+        setModalVisible(false);
+        //navigation.navigate('EditTask', { taskId: task.id, task });
+    };
+
+    const viewTaskDetails = (task) => {
+        setSelectedTask(task);
+        setModalVisible(true);
+    };
+
+    const closeModal = () => {
+        setModalVisible(false);
+        setSelectedTask(null);
     };
 
     const getPriorityColor = (priority) => {
@@ -134,6 +158,17 @@ export default function TasksListScreen({ navigation }) {
             case 'low': return 'border-green-500';
             default: return 'border-gray-300';
         }
+    };
+
+    const getFormattedDate = (dateString) => {
+        if (!dateString) return 'No due date';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
     };
 
     const filteredTasks = filter === 'all'
@@ -230,63 +265,92 @@ export default function TasksListScreen({ navigation }) {
                         </TouchableOpacity>
                     </View>
                 ) : (
-                    filteredTasks.map((task, index) => (
-                        <Animated.View
+                    filteredTasks.map((task) => (
+                        <TouchableOpacity
                             key={task.id}
-                            style={[
-                                tw`bg-white rounded-3xl p-4 mb-4 shadow-sm border-l-4 ${getPriorityColor(task.priority)}`,
-                                { opacity: fadeAnim }
-                            ]}
+                            onPress={() => viewTaskDetails(task)}
+                            activeOpacity={0.7}
                         >
-                            <View style={tw`flex-row items-center`}>
-                                <TouchableOpacity
-                                    onPress={() => toggleTask(task.id)}
-                                    style={tw`w-10 h-10 rounded-full border-2 ${task.completed ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
-                                        } items-center justify-center mr-3`}
-                                >
-                                    {task.completed && <Ionicons name="checkmark" size={20} color="white" />}
-                                </TouchableOpacity>
+                            <Animated.View
+                                style={[
+                                    tw`bg-white rounded-3xl p-4 mb-4 shadow-sm border-l-4 ${getPriorityColor(task.priority)}`,
+                                    { opacity: fadeAnim }
+                                ]}
+                            >
+                                <View style={tw`flex-row items-center`}>
+                                    <TouchableOpacity
+                                        onPress={(e) => {
+                                            e.stopPropagation();
+                                            toggleTask(task.id);
+                                        }}
+                                        style={tw`w-10 h-10 rounded-full border-2 ${task.completed ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
+                                            } items-center justify-center mr-3`}
+                                    >
+                                        {task.completed && <Ionicons name="checkmark" size={20} color="white" />}
+                                    </TouchableOpacity>
 
-                                <View style={tw`flex-1`}>
-                                    <View style={tw`flex-row items-center mb-1`}>
-                                        <CustomText style={tw`text-2xl mr-2`}>{task.emoji || '📝'}</CustomText>
-                                        <CustomText style={tw`text-base font-semibold ${task.completed ? 'text-gray-400 line-through' : 'text-gray-800'
-                                            } flex-1`}>
-                                            {task.title}
+                                    <View style={tw`flex-1`}>
+                                        <View style={tw`flex-row items-center mb-1`}>
+                                            <CustomText style={tw`text-2xl mr-2`}>{task.emoji || '📝'}</CustomText>
+                                            <CustomText style={tw`text-base font-semibold ${task.completed ? 'text-gray-400 line-through' : 'text-gray-800'
+                                                } flex-1`}>
+                                                {task.title}
+                                            </CustomText>
+                                        </View>
+                                        <CustomText style={tw`text-sm text-gray-500`}>
+                                            Due: {getFormattedDate(task.dueDate)}
                                         </CustomText>
                                     </View>
-                                    <CustomText style={tw`text-sm text-gray-500`}>
-                                        Due: {task.dueDate || 'No due date'}
-                                    </CustomText>
+
+                                    <View style={tw`flex-row gap-2`}>
+                                        <TouchableOpacity
+                                            onPress={(e) => {
+                                                e.stopPropagation();
+                                                editTask(task);
+                                            }}
+                                            style={tw`bg-blue-50 p-2 rounded-full`}
+                                        >
+                                            <Ionicons name="pencil-outline" size={18} color="#3B82F6" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={(e) => {
+                                                e.stopPropagation();
+                                                deleteTask(task.id);
+                                            }}
+                                            style={tw`bg-red-50 p-2 rounded-full`}
+                                        >
+                                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
 
-                                <View style={tw`flex-row gap-2`}>
-                                    <TouchableOpacity
-                                        onPress={() => editTask(task)}
-                                        style={tw`bg-blue-50 p-2 rounded-full`}
-                                    >
-                                        <Ionicons name="pencil-outline" size={18} color="#3B82F6" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        onPress={() => deleteTask(task.id)}
-                                        style={tw`bg-red-50 p-2 rounded-full`}
-                                    >
-                                        <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-
-                            {/* Show description if exists */}
-                            {task.description && (
-                                <View style={tw`mt-3 ml-13 bg-gray-50 rounded-2xl p-3`}>
-                                    <CustomText style={tw`text-sm text-gray-600`}>{task.description}</CustomText>
-                                </View>
-                            )}
-                        </Animated.View>
+                                {/* Show description if exists */}
+                                {task.description && (
+                                    <View style={tw`mt-3 ml-13 bg-gray-50 rounded-2xl p-3`}>
+                                        <CustomText 
+                                            style={tw`text-sm text-gray-600`}
+                                            numberOfLines={2}
+                                        >
+                                            {task.description}
+                                        </CustomText>
+                                    </View>
+                                )}
+                            </Animated.View>
+                        </TouchableOpacity>
                     ))
                 )}
                 <View style={tw`h-6`} />
             </ScrollView>
+
+            {/* Task Details Modal */}
+            <ViewTaskModal
+                modalVisible={modalVisible}
+                selectedTask={selectedTask}
+                onClose={closeModal}
+                onToggleComplete={toggleTask}
+                onEdit={editTask}
+                onDelete={deleteTask}
+            />
         </View>
     );
-}
+}   
